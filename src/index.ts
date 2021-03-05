@@ -84,6 +84,8 @@ async function pull(repo: string): Promise<void> {
         index += 1;
     }
 
+    console.error(`${repo},${pulls.length}`);
+
     for (let r of result) {
         if (r.name == repo) {
             r.pulls = pulls;
@@ -132,6 +134,8 @@ async function issue(repo: string): Promise<void> {
         index += 1;
     }
 
+    console.error(`${repo},${issues.length}`);
+
     for (let r of result) {
         if (r.name == repo) {
             r.issues = issues;
@@ -172,7 +176,8 @@ async function repo() {
     }
 
     for (let repo of repos) {
-        await issue(repo.name)
+        await issue(repo.name);
+        await pull(repo.name);
     }
 }
 
@@ -207,6 +212,8 @@ async function repo() {
             }
         });
 
-        console.log(`${repo},${issue_open_count},${issue_close_count},${pull_open_count},${pull_close_count},${pull_merge_count}`);
+        if (r.issues.length !== 0 && r.pulls.length !== 0) {
+            console.log(`${r.name},${issue_open_count},${issue_close_count},${pull_open_count},${pull_close_count},${pull_merge_count}`);
+        }
     });
 })()
