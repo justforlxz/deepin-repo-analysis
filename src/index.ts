@@ -1,15 +1,16 @@
-import { request } from '@octokit/request';
-import {
-    RequestHeaders
-} from "@octokit/types";
 import yaml from 'js-yaml';
 import fs from 'fs';
 import yargs from 'yargs';
-import { Repos } from './types/IRepo';
 import "reflect-metadata";
 import { ConnectionOptions, createConnection } from 'typeorm';
-import { IssueTable, RepoTable } from './database';
-import { RepoManager } from './repo_manager';
+import { Issue, IssueType, Repo, RepoType } from './database';
+import Koa from "koa";
+import Router from "koa-router";
+import json from "koa-json";
+import logger from "koa-logger";
+import { RequestHeaders } from '@octokit/types';
+import { request } from "@octokit/request";
+import { IssueManager } from './repo_manager';
 
 const yarg = yargs
     .option('config', {
@@ -57,187 +58,81 @@ try {
 
 // init database
 const options: ConnectionOptions = {
-    type: "sqlite",
-    database: argv.database,
-    entities: [RepoTable, IssueTable],
+    type: "mongodb",
+    host: "127.0.0.1",
+    database: "deepin",
+    port: 55597,
     logging: true,
-    synchronize: true,
+    username: "root",
+    password: "fuckgfw",
+    authSource: "admin",
+    entities: [Repo, Issue]
 }
 
-async function main() {
+const app = new Koa();
+const router = new Router();
+
+// 开启检查
+// 连接数据库，检查失败的仓库和未完成的任务队列
+// 需要记录任务的执行状态
+
+router.get("/issue", async (ctx) => {
     const connection = await createConnection(options);
-
-    const repoTable = connection.getRepository(RepoTable);
-    const issueTable = connection.getRepository(IssueTable);
-
     const headers: RequestHeaders = {
         authorization: `token ${token}`
     }
 
-    async function repo() {
-        let index: number = 0;
-        let repos: Repos = [];
-        let reposRec: string[] = []
-        // 失败以后记录到失败表,并记录重试次数
-        for (; ;) {
-            const response = await request('GET /orgs/{org}/repos', {
-                headers,
-                org: 'linuxdeepin',
-                page: index
-            });
+    async function refreshIssue(name: string): Promise<Issue[] | null> {
+        const repo_manager = new IssueManager({
+            name,
+            request,
+            headers
+        });
 
-            if (response.status !== 200) {
-                continue;
-            }
+        const issues = await repo_manager.run();
+        let result: Issue[] | null = [];
 
-            if (response.data.length === 0) {
-                break;
-            }
+        issues?.forEach(issue => {
+            let v = new Issue();
+            v.name = name;
+            v.issue = issue;
+            result?.push(v);
+        });
 
-            const tmp: Repos = [];
-
-            response.data.forEach(repo => {
-                if (reposRec.find(v => v == repo.name) === undefined) {
-                    reposRec.push(repo.name)
-                    tmp.push(repo);
-                }
-            });
-
-            repos = repos.concat(tmp)
-            index += 1;
-        }
-
-        // 检查上次失败的
-        let replyRepos: Repos = [];
-        let repoTasks: Map<string, number> = new Map<string, number>();
-        let maxTaskId = 0;// init
-        for (let repo of repos) {
-            let result = await repoTable.findOne(repo.name);
-            if (argv.download === "failed" && result !== undefined) {
-                maxTaskId = Math.max(maxTaskId, result.task);
-                repoTasks.set(repo.name, result.task);
-            }
-            if (argv.download === "all") {
-                replyRepos.push(repo);
-            }
-            if (argv.download === 'successd' && result !== undefined) {
-                maxTaskId = Math.max(maxTaskId, result.task);
-                repoTasks.set(repo.name, result.task);
-            }
-        }
-
-        // 收集到了所有的task
-        for (let [key, value] of repoTasks) {
-            if ((argv.download === "failed" && value < maxTaskId) || (argv.download === "successd" && value === maxTaskId)) {
-                const repo = repos.find(repo => repo.name == key);
-                if (repo !== undefined) {
-                    replyRepos.push(repo);
-                }
-            }
-        }
-
-        for await (let repo of replyRepos) {
-            // 检查是否存在
-            let result = await repoTable.find({
-                where: {
-                    repo: repo.name
-                }
-            });
-
-            let value: RepoTable;
-            // 如果没有找到, 设置初始数据
-            if (result.length === 0) {
-                value = new RepoTable();
-                value.repo = repo.name;
-                value.forks = repo.forks_count;
-                value.open_issues = repo.open_issues_count;
-                value.watchers = repo.watchers_count;
-                value.task = maxTaskId;
-                await repoTable.manager.save(value);
-            }
-            else {
-                value = result[0];
-            }
-
-            const repo_manager = new RepoManager({
-                name: repo.name,
-                request,
-                headers
-            });
-
-            const issues = await repo_manager.issue();
-
-            if (issues === null) {
-                value.task -= 1;
-                await repoTable.createQueryBuilder()
-                    .update(RepoTable)
-                    .set(value)
-                    .where("repo = :repo", {
-                        repo: repo.name
-                    })
-                    .execute();
-                continue;
-            }
-            // 查找到已有的，去掉id相同的
-            for await (let issue of issues) {
-                let result = await issueTable.find({
-                    where: {
-                        repo: repo.name,
-                        number: issue.number
-                    }
-                });
-
-                console.log(`${repo.name} ${result.length}`);
-
-                let value = new IssueTable();
-                value.number = issue.number;
-                value.repo = repo.name;
-                value.created_at = issue.created_at;
-                value.state = issue.state;
-
-                if (result.length === 0) {
-                    await issueTable.manager.save(value);
-                }
-                else {
-                    await issueTable.createQueryBuilder()
-                        .update(IssueTable)
-                        .set(value)
-                        .where("repo = :repo and number = :number", {
-                            repo: repo.name,
-                            "number": value.number
-                        })
-                        .execute();
-                }
-            }
-
-            // update successd
-            if (result.length === 0) {
-                continue;
-            }
-
-            value.task = value.task + 1;
-            await repoTable.createQueryBuilder()
-                .update(RepoTable)
-                .set(value)
-                .where("repo = :repo", {
-                    repo: repo.name
-                })
-                .execute();
-        }
-
-        // repo_manager.pull().then(async pulls => {
-        //     pulls.forEach(pull => {
-
-        //     });
-        // });
-        console.log(`finished`);
+        return issues === null ? null : result;
     }
 
-    await repo();
-}
+    interface RepoQuery {
+        repo?: string;
+    }
 
-// main().catch(error);
+    let req_query = <RepoQuery> ctx.query;
 
-(async () => {
-    await main();
-})();
+    if (req_query.repo === undefined) {
+        return;
+    }
+
+    // query by database
+    const manager = connection.getMongoRepository(Issue);
+    const result = await manager.find({
+        where: {
+            name: req_query.repo
+        }
+    });
+
+    if (result.length !== 0) {
+        ctx.body = result;
+        return;
+    }
+
+    // query by github
+    ctx.body = await refreshIssue(req_query.repo)
+});
+
+app.use(json())
+app.use(logger());
+app.use(router.routes()).use(router.allowedMethods());
+
+app.listen(3000, () => {
+    console.log("start server on localhost:3000.");
+});
