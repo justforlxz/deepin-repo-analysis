@@ -1,4 +1,5 @@
 import { RequestHeaders } from "@octokit/types";
+import { NullLiteral } from "typescript";
 import { IIssue, Issues } from "./types/IIssue";
 import { IPull, Pulls } from "./types/IPull";
 import State from "./types/State";
@@ -46,11 +47,16 @@ export class RepoManager implements RepoManagerOption {
         this.handleMap.set(event, array.concat(handler));
     }
 
-    public async issue(): Promise<Issues> {
+    public async issue(): Promise<Issues | null> {
         let index: number = 1;
         let issues: Issues = [];
         let issueIndex: Array<number> = [];
+        let tryCount = 0;
         for (; ;) {
+            if (tryCount >= 3) {
+                return null;
+            }
+
             const response = await this.request(this.issueUrl, {
                 headers: this.headers,
                 owner: 'linuxdeepin',
@@ -61,6 +67,7 @@ export class RepoManager implements RepoManagerOption {
 
             if (response.status !== 200) {
                 // 保存失败的页数
+                tryCount += 1;
             }
 
             let tmpNeed: Issues = [];

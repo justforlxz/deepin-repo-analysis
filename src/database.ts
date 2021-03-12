@@ -1,10 +1,14 @@
 import { Entity, PrimaryColumn, Column, EntitySchema, PrimaryGeneratedColumn } from "typeorm";
-import State from "./types/State"
+import State from "./types/State";
+import { IIssue } from "./types/IIssue";
 
 @Entity("repo")
 export class RepoTable {
     @PrimaryColumn()
     public repo!: string;
+
+    @Column()
+    public task!: number;
 
     @Column()
     public watchers?: number;
@@ -17,7 +21,7 @@ export class RepoTable {
 }
 
 @Entity("issue")
-export class IssueTable {
+export class IssueTable implements IIssue {
     @PrimaryGeneratedColumn('increment')
     public id!: number;
 

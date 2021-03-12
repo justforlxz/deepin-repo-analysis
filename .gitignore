@@ -106,5 +106,6 @@ dist
 # settings
 config.yaml
 
-.db
+*.db
+*.sql
 .vscode/
