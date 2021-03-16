@@ -59,7 +59,12 @@ const handle = async (ctx: RouterContext) => {
     }
 
     // query by github
-    ctx.body = await refreshIssue(req_query.repo)
+    const issues = await refreshIssue(req_query.repo) ?? [];
+    for await (let issue of issues) {
+        await manager.save(issue);
+    }
+
+    ctx.body = issues;
 }
 
 export default handle;
