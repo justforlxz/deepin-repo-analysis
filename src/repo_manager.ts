@@ -1,6 +1,4 @@
 import { RequestHeaders } from "@octokit/types";
-import { IIssue } from "./types/Issue";
-
 import { IssueType, PullType } from "./database";
 
 type OctokitRequest = import("@octokit/types").RequestInterface<object>;

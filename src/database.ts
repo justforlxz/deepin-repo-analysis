@@ -1,8 +1,4 @@
-import { Entity, PrimaryColumn, Column, PrimaryGeneratedColumn, ObjectID, ObjectIdColumn } from "typeorm";
-import State from "./types/State";
-import { IIssue } from "./types/Issue";
-import { IPull } from "./types/Pull";
-
+import { Entity, Column, ObjectID, ObjectIdColumn, Connection } from "typeorm";
 import { Endpoints } from "@octokit/types";
 
 export type RepoType = Endpoints["GET /repos/{owner}/{repo}"]["response"]["data"];
@@ -47,74 +43,15 @@ export class Pull {
 
 // TODO: missing webhook table
 
-// @Entity("repo")
-// export class RepoTable {
-//     @PrimaryColumn()
-//     public repo!: string;
-
-//     @Column()
-//     public task!: number;
-
-//     @Column()
-//     public watchers?: number;
-
-//     @Column()
-//     public forks?: number;
-
-//     @Column()
-//     public open_issues?: number;
-// }
-
-// @Entity("issue")
-// export class IssueTable implements IIssue {
-//     @PrimaryGeneratedColumn('increment')
-//     public id!: number;
-
-//     @Column()
-//     public created_at!: Date;
-
-//     @Column()
-//     public repo!: string;
-
-//     @Column()
-//     public number!: number;
-
-//     @Column()
-//     public state!: State | string;
-// }
-
-// @Entity("pull")
-// export class PullTable implements IPull {
-//     @PrimaryGeneratedColumn('increment')
-//     public id!: number;
-
-//     @Column()
-//     public repo!: string;
-
-//     @Column()
-//     public merged_at?: Date;
-
-//     @Column()
-//     public closed_at?: Date;
-
-//     @Column()
-//     public created_at!: Date;
-
-//     @Column()
-//     public updated_at!: Date;
-
-//     @Column()
-//     public number!: number;
-
-//     @Column()
-//     public locked!: boolean;
-
-//     @Column()
-//     public state!: State | string;
-
-//     @Column()
-//     public title!: string;
-
-//     @Column()
-//     public body!: string;
-// }
+export class ConnectInstance {
+    public connection?: Connection;
+    private static _instance: ConnectInstance;
+    public static get instance() {
+        if (!this._instance) {
+            this._instance = new ConnectInstance();
+        } else {
+            console.log('lazy loading singleton has created')
+        }
+        return this._instance;
+    }
+}
